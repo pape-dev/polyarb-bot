@@ -54,18 +54,60 @@ const SEEDS = [
   { id:"CRYPTO",   emoji:"₿",  kw:["bitcoin","ethereum","crypto","solana","btc","eth","binance","coinbase","defi"] },
   { id:"POLITICS", emoji:"🗳", kw:["trump","president","congress","election","senate","vote","democrat","republican","biden","harris","governor"] },
   { id:"MACRO",    emoji:"📉", kw:["fed","rate","recession","inflation","gdp","cpi","fomc","dollar","treasury","unemployment","powell"] },
-  { id:"SPORTS",   emoji:"🏆", kw:[
-    "win","beats","loses","victory","defeat",
-    "score","goals","goal","assists","corner","corners",
-    "fouls","foul","cards","penalty","penalties",
-    "offsides","shots","possession","points","rebounds",
-    "blocks","steals","yards","touchdowns","interceptions",
-    "sacks","innings","strikeouts","home run","baskets",
-    "three pointer","free throw","mvp","over","under",
-    "total","first half","second half","halftime","fulltime",
-    "match","game","tonight","series","playoff",
-    "championship","final","cup","nfl","nba","champions",
-    "super bowl","world cup","ligue","premier league","laliga"
+  { id:"SPORTS", emoji:"🏆", kw:[
+    // Général
+    "win","beats","loses","victory","defeat","champion","title",
+    "match","game","tonight","series","playoff","final","cup",
+    "over","under","total","first half","second half","halftime",
+    "fulltime","mvp","player props","season","tournament",
+    // ⚽ Football/Soccer
+    "soccer","football","goal","goals","assists","corner","corners",
+    "fouls","foul","yellow card","red card","penalty","penalties",
+    "offside","shots","possession","clean sheet","hat trick",
+    "premier league","laliga","ligue 1","bundesliga","serie a",
+    "champions league","world cup","euro","copa","mls",
+    "messi","ronaldo","haaland","mbappe",
+    // 🏀 Basketball
+    "nba","basketball","points","rebounds","blocks","steals",
+    "three pointer","free throw","assist","dunk","triple double",
+    "lakers","celtics","warriors","bulls","heat","bucks",
+    "lebron","curry","durant","giannis","jokic",
+    // 🏈 Football américain
+    "nfl","touchdown","yards","interception","sacks","field goal",
+    "super bowl","quarterback","rushing","passing","reception",
+    "mahomes","brady","chiefs","eagles","cowboys","patriots",
+    // ⚾ Baseball
+    "mlb","baseball","innings","strikeouts","home run","batting",
+    "pitcher","hits","runs","errors","yankees","dodgers","astros",
+    // 🎾 Tennis
+    "tennis","sets","aces","double fault","break point","grand slam",
+    "wimbledon","us open","french open","australian open",
+    "djokovic","alcaraz","medvedev","sinner","swiatek",
+    // 🏒 Hockey
+    "nhl","hockey","puck","save","penalty shot","power play",
+    "stanley cup","maple leafs","bruins","rangers",
+    // 🥊 Boxe / MMA
+    "boxing","mma","ufc","knockout","ko","tko","submission",
+    "rounds","bout","fight","champion belt","title fight",
+    "fury","canelo","jones","adesanya","mcgregor","ngannou",
+    // 🏎️ Formule 1
+    "formula 1","f1","race","grand prix","pole position","fastest lap",
+    "verstappen","hamilton","leclerc","norris","ferrari","mercedes","redbull",
+    // 🏏 Cricket
+    "cricket","wickets","overs","batting average","test match","odi","t20",
+    "ipl","ashes","world cup cricket",
+    // 🏉 Rugby
+    "rugby","tries","conversion","scrum","lineout","six nations",
+    "world cup rugby","all blacks","springboks",
+    // 🎯 Golf
+    "golf","pga","masters","open championship","birdie","eagle","par",
+    "tiger","rory","scottie","morikawa",
+    // 🎮 Esports
+    "esports","league of legends","dota","cs2","valorant","lol",
+    "worlds","major","tournament","kills","assists esports",
+    // 🏊 Athlétisme / Autres
+    "olympics","medal","sprint","marathon","swimming","athletics",
+    "volleyball","handball","cycling","tour de france"
   ]},
   { id:"GEO",      emoji:"🌍", kw:["iran","russia","china","war","conflict","ukraine","nato","israel","gaza","military","sanctions"] },
 ];
@@ -257,7 +299,9 @@ function bhCorrect(pairs) {
 // ─── VALIDATION — [3] bhSignificant check ajouté ──────────────
 function validateSignal(est, livePriceB, cfg) {
   if (!est) return { valid:false, reason:"NO_DATA" };
-  if (est.n < cfg.minBayesPts) return { valid:false, reason:`N=${est.n}<${cfg.minBayesPts}` };
+  // [v9] mode rapide SPORTS : 4 observations suffisent
+  const minPts = est.isSports ? 4 : cfg.minBayesPts;
+  if (est.n < minPts) return { valid:false, reason:`N=${est.n}<${minPts}` };
   if (cfg.requireSig && !est.significant)   return { valid:false, reason:`p=${est.pValue.toFixed(2)}` };
   if (cfg.requireBH  && !est.bhSignificant) return { valid:false, reason:"BH_REJECT" };
   if (est.delta < cfg.minDelta) return { valid:false, reason:`δ<${(cfg.minDelta*100).toFixed(0)}` };
@@ -336,7 +380,7 @@ function calcSharpe(returns) {
 // ═══════════════════════════════════════════════════════════════
 // PAIR DISCOVERY — [1] savedHist optionnel dans makePair / buildPairs
 // ═══════════════════════════════════════════════════════════════
-function makePair(idStr, cat, catLabel, mA, mB, prev, savedHist={}) {
+function makePair(idStr, cat, catLabel, mA, mB, prev, savedHist={}, isSports=false) {
   const ex = prev?.find(x => x.id === idStr);
   const sh = savedHist[idStr];
   return {
@@ -352,6 +396,7 @@ function makePair(idStr, cat, catLabel, mA, mB, prev, savedHist={}) {
     structural: null,
     pBFair: mB.price, fairCI:[0,1],
     edge:0, ob:null, kellyUSDC:0, slip:0.02,
+    isSports, // [v9] flag mode rapide sport
   };
 }
 
@@ -372,7 +417,7 @@ function buildPairs(markets, prev=[], savedHist={}) {
     const emoji = SEEDS.find(x => x.id === cat)?.emoji ?? "•";
     for (let i=0; i<s.length; i++)
       for (let j=i+1; j<s.length; j++)
-        intra.push(makePair(`${cat}-${i}${j}`, emoji, cat, s[i], s[j], prev, savedHist));
+        intra.push(makePair(`${cat}-${i}${j}`, emoji, cat, s[i], s[j], prev, savedHist, cat==="SPORTS"));
   }
   const crossPairs = [];
   // [v8-6] 6 cross-catégories (3 nouvelles) + 2 paires par cross (00 et 11)
